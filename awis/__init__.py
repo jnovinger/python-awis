@@ -71,30 +71,37 @@ class AwisApi(object):
                          self.AWIS_HOST,
                          self.PATH,
                          self._urlencode(params)])
-        hmac_signature = hmac.new(self.secret_access_key, msg, hashlib.sha1)
+        print(msg)
+        hmac_signature = hmac.new(self.secret_access_key, msg, hashlib.sha256)
         signature = base64.b64encode(hmac_signature.digest())
         return signature
 
     def request(self, params, tries=3, as_xml=True):
         params.update({
             "AWSAccessKeyId": self.access_id,
-            "SignatureMethod": "HmacSHA1",
+            "SignatureMethod": "HmacSHA256",
             "SignatureVersion": 2,
             "Timestamp": self._get_timestamp(),
+            "Version": "2005-07-11",
         })
         params["Signature"] = self.sign(params)
         url = "http://%s%s?%s" % (self.AWIS_HOST,
                                   self.PATH,
                                   self._urlencode(params))
+        print(url)
         failed_requests = 0
         while failed_requests < tries:
-            response = urllib.urlopen(url)
-            if response.code == 200:
-                if as_xml:
-                    return ET.parse(response)
-                else:
-                    return response.read()
-            failed_requests += 1
+            try:
+                response = urllib.urlopen(url)
+                if response.code == 200:
+                    if as_xml:
+                        return ET.parse(response)
+                    else:
+                        return response.read()
+                failed_requests += 1
+            except IOError as ex:
+                raise
+
         raise IOError(
           "All %d requests failed, latest response code is %d" % (
               failed_requests,
@@ -119,6 +126,23 @@ class AwisApi(object):
                 params.update({"UrlInfo.%d.Url" % (i + 1): urllib.quote(url)})
 
         return self.request(params, **kwargs)
+
+    def top_info(self, path, count=10, offset=0, recursive=True,
+            sort_by=u'Popularity', descriptions=True):
+
+        params = {
+            u'Action': u'CategoryListings',
+            u'ResponseGroup': u'Listings',
+            u'Path': path,
+            u'SortBy': sort_by,
+            u'Count': count,
+            u'Recursive': recursive,
+            u'Start': offset,
+            u'Count': count,
+            u'Descriptions': descriptions,
+        }
+
+        return self.request(params)
 
     @staticmethod
     def _get_timestamp():
